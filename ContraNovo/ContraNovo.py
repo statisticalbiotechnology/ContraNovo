@@ -23,6 +23,7 @@ from pytorch_lightning.lite import LightningLite
 
 from . import utils
 from .denovo import model_runner
+from .denovo.writer import MZTabWriter
 
 
 logger = logging.getLogger("ContraNovo")
@@ -89,8 +90,10 @@ def main(
             os.getcwd(),
             f"ContraNovo_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}",
         )
+        writer = MZTabWriter(output + ".csv")
     else:
         output = os.path.splitext(os.path.abspath(output))[0]
+        writer = None
 
     # Configure logging.
     logging.captureWarnings(True)
@@ -195,7 +198,6 @@ def main(
     # Run ContraNovo in the specified mode.
     if mode == "denovo":
         logger.info("Predict peptide sequences with ContraNovo.")
-        writer = None
         writer.set_metadata(
             config, peak_path=peak_path, model=model, config_filename=config_fn
         )
@@ -208,10 +210,11 @@ def main(
         logger.info(
             "Predict spectrum vector representations with a trained ContraNovo model."
         )
-        writer = None
-        # writer.set_metadata(
-        #     config, peak_path=peak_path, model=model, config_filename=config_fn
-        # )
+        writer.set_metadata(
+            peak_path=peak_path,
+            model=model,
+            config_filename=config_fn,
+        )
         model_runner.vectors(peak_path, model, config, writer)
         writer.save()
     elif mode == "train":

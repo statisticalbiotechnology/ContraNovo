@@ -125,7 +125,6 @@ def _predict_vectors(
         n_beams=config["n_beams"],
         n_log=config["n_log"],
         out_writer=out_writer,
-        predict_vectors=config["predict_vectors"],
     )
     # Read the MS/MS spectra for which to predict peptide sequences.
     if annotated:
