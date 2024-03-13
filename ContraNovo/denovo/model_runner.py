@@ -15,9 +15,12 @@ import torch
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.profiler import SimpleProfiler
 
+from ContraNovo.denovo.spec2vector import Spec2Vector
+
 from .. import utils
 from .db_dataloader import DeNovoDataModule
 from .model import Spec2Pep
+
 
 logger = logging.getLogger("ContraNovo")
 
@@ -54,6 +57,143 @@ def evaluate(peak_path: str, model_filename: str, config: Dict[str, Any]) -> Non
         The configuration options.
     """
     _execute_existing(peak_path, model_filename, config, True)
+
+
+def vectors(
+    peak_path: str, model_filename: str, config: Dict[str, Any], out_writer: None
+) -> None:
+    """
+    Predict spectrum vector representations with a trained ContraNovo model.
+
+    Parameters
+    ----------
+    peak_path : str
+        The path with peak files for predicting peptide sequences.
+    model_filename : str
+        The file name of the model weights (.ckpt file).
+    config : Dict[str, Any]
+        The configuration options.
+    """
+    _predict_vectors(peak_path, model_filename, config, False, out_writer)
+
+
+def _predict_vectors(
+    peak_path: str,
+    model_filename: str,
+    config: Dict[str, Any],
+    annotated: bool,
+    out_writer=None,
+) -> None:
+    """
+    Predict peptide sequences with a trained ContraNovo model with/without
+    evaluation.
+
+    Parameters
+    ----------
+    peak_path : str
+        The path with peak files for predicting peptide sequences.
+    model_filename : str
+        The file name of the model weights (.ckpt file).
+    config : Dict[str, Any]
+        The configuration options.
+    annotated : bool
+        Whether the input peak files are annotated (execute in evaluation mode)
+        or not (execute in prediction mode only).
+    """
+    # Load the trained model.
+    if not os.path.isfile(model_filename):
+        logger.error(
+            "Could not find the trained model weights at file %s",
+            model_filename,
+        )
+        raise FileNotFoundError("Could not find the trained model weights")
+
+    model = Spec2Vector().load_from_checkpoint(
+        model_filename,
+        dim_model=config["dim_model"],
+        n_head=config["n_head"],
+        dim_feedforward=config["dim_feedforward"],
+        n_layers=config["n_layers"],
+        dropout=config["dropout"],
+        dim_intensity=config["dim_intensity"],
+        custom_encoder=config["custom_encoder"],
+        max_length=config["max_length"],
+        residues=config["residues"],
+        max_charge=config["max_charge"],
+        precursor_mass_tol=config["precursor_mass_tol"],
+        isotope_error_range=config["isotope_error_range"],
+        n_beams=config["n_beams"],
+        n_log=config["n_log"],
+        out_writer=out_writer,
+        predict_vectors=config["predict_vectors"],
+    )
+    # Read the MS/MS spectra for which to predict peptide sequences.
+    if annotated:
+        peak_ext = (".mgf", ".h5", ".hdf5")
+    else:
+        peak_ext = (".mgf", ".mzml", ".mzxml", ".h5", ".hdf5")
+    if len(peak_filenames := _get_peak_filenames(peak_path, peak_ext)) == 0:
+        logger.error("Could not find peak files from %s", peak_path)
+        raise FileNotFoundError("Could not find peak files")
+    peak_is_not_index = any(
+        [
+            os.path.splitext(fn)[1] in (".mgf", ".mzxml", ".mzml")
+            for fn in peak_filenames
+        ]
+    )
+
+    tmp_dir = tempfile.TemporaryDirectory()
+    if peak_is_not_index:
+        index_path = [os.path.join(tmp_dir.name, f"eval_{uuid.uuid4().hex}")]
+    else:
+        index_path = peak_filenames
+        peak_filenames = None
+    print("is peak not index?, ", peak_is_not_index)
+
+    # SpectrumIdx = AnnotatedSpectrumIndex if annotated else SpectrumIndex
+    valid_charge = np.arange(1, config["max_charge"] + 1)
+    dataloader_params = dict(
+        batch_size=config["predict_batch_size"],
+        n_peaks=config["n_peaks"],
+        min_mz=config["min_mz"],
+        max_mz=config["max_mz"],
+        min_intensity=config["min_intensity"],
+        remove_precursor_tol=config["remove_precursor_tol"],
+        n_workers=config["n_workers"],
+        train_filenames=None,
+        val_filenames=None,
+        test_filenames=peak_filenames,
+        train_index_path=None,  # always a list, either a list containing one index path file or a list containing multiple db files
+        val_index_path=None,
+        test_index_path=index_path,
+        annotated=annotated,
+        valid_charge=valid_charge,
+        mode="test",
+    )
+    # Initialize the data loader.
+    dataModule = DeNovoDataModule(**dataloader_params)
+    dataModule.prepare_data()
+    dataModule.setup(stage="test")
+    test_dataloader = dataModule.test_dataloader()
+
+    # Create the Trainer object.
+    trainer = pl.Trainer(
+        enable_model_summary=True,
+        accelerator=config["accelerator"],
+        auto_select_gpus=True,
+        devices=_get_devices(config["accelerator"] == "cpu"),
+        logger=config["logger"],
+        max_epochs=config["max_epochs"],
+        num_sanity_val_steps=config["num_sanity_val_steps"],
+        strategy=_get_strategy(),
+    )
+    # Run the model with/without validation.
+    run_trainer = trainer.validate if annotated else trainer.predict
+    pytorch_total_params = sum(p.numel() for p in model.parameters())
+    print("model size is : ", pytorch_total_params)
+    run_trainer(model, test_dataloader)
+    # Clean up temporary files.
+    tmp_dir.cleanup()
 
 
 def _execute_existing(
@@ -103,6 +243,7 @@ def _execute_existing(
         n_beams=config["n_beams"],
         n_log=config["n_log"],
         out_writer=out_writer,
+        predict_vectors=config["predict_vectors"],
     )
     # Read the MS/MS spectra for which to predict peptide sequences.
     if annotated:

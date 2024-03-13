@@ -1,4 +1,5 @@
 """The command line entry point for Contranovo."""
+
 import datetime
 import functools
 import logging
@@ -38,7 +39,7 @@ logger = logging.getLogger("ContraNovo")
     "previously trained model).\n"
     '- "eval" will evaluate the performance of a\ntrained model using '
     "previously acquired spectrum\nannotations.",
-    type=click.Choice(["denovo", "train", "eval"]),
+    type=click.Choice(["denovo", "train", "eval", "vectors"]),
 )
 @click.option(
     "--model",
@@ -58,8 +59,7 @@ logger = logging.getLogger("ContraNovo")
 )
 @click.option(
     "--peak_path_test",
-    help="The file path with peak files to be used as testing data during "
-    "training.",
+    help="The file path with peak files to be used as testing data during " "training.",
 )
 @click.option(
     "--config",
@@ -82,7 +82,7 @@ def main(
     config: Optional[str],
     output: Optional[str],
 ):
-   
+
     # print("hello xiang")
     if output is None:
         output = os.path.join(
@@ -176,8 +176,9 @@ def main(
         config["train_batch_size"] = config["train_batch_size"] // n_gpus
 
     import random
-    if(config["random_seed"]==-1):
-        config["random_seed"]=random.randint(1, 9999)
+
+    if config["random_seed"] == -1:
+        config["random_seed"] = random.randint(1, 9999)
     LightningLite.seed_everything(seed=config["random_seed"], workers=True)
 
     # Log the active configuration.
@@ -203,9 +204,20 @@ def main(
     elif mode == "eval":
         logger.info("Evaluate a trained ContraNovo model.")
         model_runner.evaluate(peak_path, model, config)
+    if mode == "vectors":
+        logger.info(
+            "Predict spectrum vector representations with a trained ContraNovo model."
+        )
+        writer = None
+        # writer.set_metadata(
+        #     config, peak_path=peak_path, model=model, config_filename=config_fn
+        # )
+        model_runner.vectors(peak_path, model, config, writer)
+        writer.save()
     elif mode == "train":
         logger.info("Train the ContraNovo model.")
         model_runner.train(peak_path, peak_path_val, peak_path_test, model, config)
+
 
 if __name__ == "__main__":
     main()
