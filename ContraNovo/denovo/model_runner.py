@@ -158,7 +158,7 @@ def _execute_existing(
         enable_model_summary=True,
         accelerator=config["accelerator"],
         auto_select_gpus=True,
-        devices=_get_devices(),
+        devices=_get_devices(config["accelerator"] == "cpu"),
         logger=config["logger"],
         max_epochs=config["max_epochs"],
         num_sanity_val_steps=config["num_sanity_val_steps"],
@@ -457,7 +457,7 @@ def train(
         accelerator=config["accelerator"],
         auto_select_gpus=True,
         callbacks=callbacks,
-        devices=_get_devices(),
+        devices=_get_devices(config["accelerator"] == "cpu"),
         num_nodes=config["n_nodes"],
         logger=neptune_logger if config["enable_neptune"] else None,
         max_epochs=config["max_epochs"],
@@ -529,7 +529,7 @@ def _get_strategy() -> Optional[DDPStrategy]:
     return None
 
 
-def _get_devices() -> Union[int, str]:
+def _get_devices(cpu=False) -> Union[int, str]:
     """
     Get the number of GPUs/CPUs for the Trainer to use.
 
@@ -540,7 +540,7 @@ def _get_devices() -> Union[int, str]:
         determine the appropriate number of devices.
     """
 
-    if any(
+    if not cpu and any(
         operator.attrgetter(device + ".is_available")(torch)()
         for device in ["cuda", "backends.mps"]
     ):

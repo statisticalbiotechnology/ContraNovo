@@ -1,3 +1,6 @@
+### Added by statisticalbiotechnology
+accelerator: "cpu"
+
 ###
 # ContraNovo configuration.
 # Blank entries are interpreted as "None"
@@ -80,10 +83,10 @@ sync_batchnorm: False
 SWA: False #  
 
 # Training/inference options.
-train_batch_size: 64
-predict_batch_size: 512
+train_batch_size: 16
+predict_batch_size: 16
 # n_beams: 5
-n_beams: 5 # No beam search
+n_beams: 1 # No beam search
 
 logger:
 
