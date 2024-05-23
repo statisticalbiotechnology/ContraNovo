@@ -11,7 +11,7 @@ This repository contains inference code for **A Contrastive Learning Approach to
   ```
   git clone git@github.com:BEAM-Labs/ContraNovo.git
   cd ContraNovo
-  conda env create -f environment.yml
+  conda env create -f platform_independent_environment.yml
   conda activate ContraNovo
   ```
 
@@ -24,8 +24,6 @@ This repository contains inference code for **A Contrastive Learning Approach to
 - Run ContraNovo test on bacillus.10k.mgf
 
   ```
-  python -m ContraNovo.ContraNovo  --mode=eval --peak_path=./ContraNovo/bacillus.10k.mgf --model=./ContraNovo/ContraNovo.ckpt
+  python -m ContraNovo.ContraNovo  --mode=vectors --peak_path=./ContraNovo/bacillus.10k.mgf --model=./ContraNovo/ContraNovo.ckpt
   ```
-
-  
 

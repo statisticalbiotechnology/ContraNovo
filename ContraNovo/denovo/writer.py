@@ -1,4 +1,5 @@
 import csv
+import json
 
 
 class MZTabWriter:
@@ -37,6 +38,7 @@ class MZTabWriter:
             writer = csv.DictWriter(f, fieldnames=headers, delimiter="\t")
             writer.writeheader()
             for row in self.rows:
+                row["spectrum_embedding"] = json.dumps(row["spectrum_embedding"])
                 writer.writerow(row)
 
         print(f"Results saved to {self.file_path}")

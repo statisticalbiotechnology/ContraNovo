@@ -76,8 +76,14 @@ class Spec2Vector(Spec2Pep):
         vectors : torch.Tensor of shape (n_spectra, 1, d_model)
             The spectrum embedding vectors
         """
+
         vectors = self.forward(batch[0], batch[1])
-        return batch[2], batch[1], vectors
+        return_dict = {
+            "spectrum_idx": batch[2],
+            "precursors": batch[1],
+            "vectors": vectors,
+        }
+        return return_dict
 
     def on_predict_epoch_end(
         self, results: List[List[Tuple[np.ndarray, List[str], torch.Tensor]]]
@@ -88,23 +94,24 @@ class Spec2Vector(Spec2Pep):
         """
         if self.out_writer is None:
             return
-        for batch in results:
-            for step in batch:
-                for spectrum_idx, precursor, vector in zip(*step):
-                    # Get peptide sequence, amino acid and peptide-level
-                    # confidence scores to write to output file.
+        for out_dict_batch in results[0]:
+            spectrum_idx, precursor, vector = (
+                out_dict_batch["spectrum_idx"],
+                out_dict_batch["precursors"],
+                out_dict_batch["vectors"],
+            )
+            for step in range(len(vector)):
+                # Compare the experimental vs calculated precursor m/z.
+                _, precursor_charge, precursor_mz = precursor[step]
+                precursor_charge = int(precursor_charge.item())
+                precursor_mz = precursor_mz.item()
 
-                    # Compare the experimental vs calculated precursor m/z.
-                    _, precursor_charge, precursor_mz = precursor
-                    precursor_charge = int(precursor_charge.item())
-                    precursor_mz = precursor_mz.item()
-
-                    self.out_writer.append(
-                        {
-                            "spectrum_index": spectrum_idx,
-                            "precursor_charge": precursor_charge,
-                            "precursor_mz": precursor_mz,
-                            "spectrum_embedding": vector.cpu().numpy().tolist(),
-                        }
-                    )
+                self.out_writer.append(
+                    {
+                        "spectrum_index": spectrum_idx[step],
+                        "precursor_charge": precursor_charge,
+                        "precursor_mz": precursor_mz,
+                        "spectrum_embedding": vector[step].cpu().numpy().tolist(),
+                    }
+                )
         self.out_writer.save()
